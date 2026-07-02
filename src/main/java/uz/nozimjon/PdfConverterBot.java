@@ -33,7 +33,7 @@ public class PdfConverterBot extends TelegramLongPollingBot {
 
     private final String BOT_TOKEN = "8844942368:AAHtAXuYg4TQZ4CFGRbe4oVGHaz3-6fGGNc";
     private final String BOT_USERNAME = "PDF BOT";
-    private final String ADMIN_ID = "5406236537L"; // Oxiridagi L harfi olib tashlandi
+    private final String ADMIN_ID = "5406236537"; // Oxiridagi L harfi olib tashlandi
 
     private final Map<Long, String> userStates = new ConcurrentHashMap<>();
     private final Map<String, List<PhotoSize>> mediaGroups = new ConcurrentHashMap<>();
