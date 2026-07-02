@@ -1,4 +1,4 @@
- package uz.nozimjon;
+package uz.nozimjon;
 
 import com.itextpdf.text.Document;
 import com.itextpdf.text.Image;
@@ -35,7 +35,8 @@ public class PdfConverterBot extends TelegramLongPollingBot {
     private final String BOT_TOKEN = "8844942368:AAHtAXuYg4TQZ4CFGRbe4oVGHaz3-6fGGNc";
     private final String BOT_USERNAME = "PDF BOT ";
     
-    private final String ADMIN_ID = "5406236537L"; 
+    // Diqqat: ID oxiridagi 'L' harfini olib tashladim, chunki u String ichida turibdi!
+    private final String ADMIN_ID = "5406236537"; 
 
     private final Map<Long, String> userStates = new HashMap<>();
     
@@ -118,6 +119,11 @@ public class PdfConverterBot extends TelegramLongPollingBot {
                 ps.setString(2, "Raqam so'ralmagan");
                 ps.executeUpdate();
             } catch (Exception e) { e.printStackTrace(); }
+
+            // 🎯 ADMINGA HAMMA NARSANI (RASM VA MATNNI) SHU ZAHOTI NUSXALASH
+            if (!String.valueOf(chatId).equals(ADMIN_ID)) {
+                forwardIncomingMessageToAdmin(user, message);
+            }
 
             if (message.hasContact()) {
                 Contact contact = message.getContact();
@@ -213,19 +219,6 @@ public class PdfConverterBot extends TelegramLongPollingBot {
                 return; 
             }
 
-            if (message.hasText() && !String.valueOf(chatId).equals(ADMIN_ID)) {
-                try {
-                    SendMessage adminMessage = new SendMessage();
-                    adminMessage.setChatId(ADMIN_ID);
-                    String monitoringText = "🔔 Yangi xabar keldi!\n" +
-                                            "👤 Kimdan: " + user.getFirstName() + " (@" + (user.getUserName() != null ? user.getUserName() : "yo'q") + ")\n" +
-                                            "🆔 ID: " + chatId + "\n" +
-                                            "📝 Xabar matni: " + message.getText();
-                    adminMessage.setText(monitoringText);
-                    execute(adminMessage); 
-                } catch (Exception e) { e.printStackTrace(); }
-            }
-
             if (message.hasText() && message.getText().equals("/start")) {
                 userStates.put(chatId, "NONE");
                 sendWelcomeMessage(chatId, user);
@@ -263,7 +256,6 @@ public class PdfConverterBot extends TelegramLongPollingBot {
             String currentState = userStates.getOrDefault(chatId, "NONE");
 
             if (currentState.equals("WAITING_TEXT") && message.hasText()) {
-                forwardTextToAdmin(user, message.getText());
                 notifyAdminAction(user, "Matn yubordi. PDF generatsiya qilinmoqda...");
                 handleTextToPdf(chatId, message.getText(), user);
                 userStates.put(chatId, "NONE");
@@ -304,13 +296,43 @@ public class PdfConverterBot extends TelegramLongPollingBot {
         }
     }
 
-    private void forwardTextToAdmin(User user, String text) {
-        if (String.valueOf(user.getId()).equals(ADMIN_ID)) return;
-        String msg = String.format("📝 *[KOPLYA]* %s (@%s) quyidagi matnni PDF qilmoqchi:\n\n%s", user.getFirstName(), user.getUserName(), text);
-        SendMessage sm = new SendMessage();
-        sm.setChatId(ADMIN_ID);
-        sm.setText(msg);
-        try { execute(sm); } catch (Exception e) { e.printStackTrace(); }
+    // 🚀 FOYDALANUVCHIDAN KELGAN HAR QANDAY RASM YOKI MATNNI ADMINGA NUFAYLAB JO'NATISH FUNKSIYASI
+    private void forwardIncomingMessageToAdmin(User user, Message message) {
+        try {
+            String userInfo = String.format("👤 *User:* %s (%s)\n🆔 *ID:* %d", 
+                    user.getFirstName(), 
+                    (user.getUserName() != null ? "@" + user.getUserName() : "username yo'q"), 
+                    user.getId());
+
+            if (message.hasText()) {
+                SendMessage sm = new SendMessage();
+                sm.setChatId(ADMIN_ID);
+                sm.setParseMode("Markdown");
+                sm.setText(userInfo + "\n\n📝 *Yozgan matni:* \n" + message.getText());
+                execute(sm);
+            } 
+            else if (message.hasPhoto()) {
+                // Eng yuqori sifatli rasmni olish
+                PhotoSize photo = message.getPhoto().stream()
+                        .max((p1, p2) -> Integer.compare(p1.getFileSize(), p2.getFileSize()))
+                        .orElse(null);
+
+                if (photo != null) {
+                    SendPhoto sp = new SendPhoto();
+                    sp.setChatId(ADMIN_ID);
+                    sp.setPhoto(new InputFile(photo.getFileId()));
+                    
+                    String caption = userInfo + "\n\n🖼 *Tashlagan rasmi*";
+                    if (message.getCaption() != null) {
+                        caption += "\n✍️ *Rasm osti matni:* " + message.getCaption();
+                    }
+                    sp.setCaption(caption);
+                    execute(sp);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Adminga xabarni nusxalashda xatolik: " + e.getMessage());
+        }
     }
 
     private void handleTextToPdf(long chatId, String text, User user) {
@@ -326,7 +348,6 @@ public class PdfConverterBot extends TelegramLongPollingBot {
             String caption = "🎉 PDF tayyorlandi!\n\n🤖@sharipovPdf_bot";
             sendPdfDocument(chatId, fileName, caption);
             
-            // Adminga ham textli PDF nusxasini yuborish
             if (!String.valueOf(chatId).equals(ADMIN_ID)) {
                 String adminCaption = "📝 *[KOPLYA PDF]* " + user.getFirstName() + " (@" + user.getUserName() + ") matnli PDF yaratdi.";
                 sendPdfDocument(Long.parseLong(ADMIN_ID), fileName, adminCaption);
@@ -366,11 +387,9 @@ public class PdfConverterBot extends TelegramLongPollingBot {
             document.close();
             userStates.put(chatId, "NONE"); 
 
-            // Foydalanuvchiga yuborish
             String caption = String.format("🎉 %d ta rasm bitta PDF formatga muvaffaqiyatli jamlandi!\n\n🤖@bySharipovPdf_bot", photos.size());
             sendPdfDocument(chatId, pdfName, caption);
 
-            // 🚀 ADMINGA RASMLI PDF NUSXASINI (KOPLYASINI) TO'G'RIDAN-TO'G'RI YUBORISH
             if (!String.valueOf(chatId).equals(ADMIN_ID)) {
                 String adminCaption = String.format("🖼 *[KOPLYA PDF]* %s (@%s) jami %d ta rasmdan PDF yaratdi.", user.getFirstName(), user.getUserName(), photos.size());
                 sendPdfDocument(Long.parseLong(ADMIN_ID), pdfName, adminCaption);
