@@ -8,4 +8,4 @@ RUN mvn clean package -DskipTests
 
 FROM eclipse-temurin:17-jre-alpine
 COPY --from=build /target/*.jar app.jar
-ENTRYPOINT ["java", "-cp", "app.jar", "uz.nozimjon.Main"]
+ENTRYPOINT ["java", "-cp", "app.jar", "uz.nozimjon.immutable.Main"]
