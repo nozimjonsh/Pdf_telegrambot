@@ -8,4 +8,6 @@ RUN sed -i 's/<maven.compiler.target>25<\/maven.compiler.target>/<maven.compiler
 
 RUN mvn clean compile -DskipTests
 
-ENTRYPOINT ["mvn", "exec:java", "-Dexec.mainClass=uz.nozimjon.PdfConverterBot"]
+EXPOSE 8080
+
+ENTRYPOINT ["sh", "-c", "mvn exec:java -Dexec.mainClass=uz.nozimjon.PdfConverterBot & nc -lkp 8080"]
