@@ -35,7 +35,7 @@ public class PdfConverterBot extends TelegramLongPollingBot {
     private final String BOT_USERNAME = "PDF BOT ";
     
     // 🔥 Admin ID to'g'rilandi (L harfi olib tashlandi va String holatiga keltirildi)
-    private final String ADMIN_ID = "5406236357"; 
+    private final String ADMIN_ID = "5406236537L"; 
 
     private final Map<Long, String> userStates = new HashMap<>();
     private Connection dbConnection;
