@@ -1,4 +1,4 @@
-package uz.nozimjon;
+ package uz.nozimjon;
 
 import com.itextpdf.text.Document;
 import com.itextpdf.text.Image;
@@ -35,12 +35,10 @@ public class PdfConverterBot extends TelegramLongPollingBot {
     private final String BOT_TOKEN = "8844942368:AAHtAXuYg4TQZ4CFGRbe4oVGHaz3-6fGGNc";
     private final String BOT_USERNAME = "PDF BOT ";
     
-    // ⚠️ Bu yerga monitoring xabarida ko'ringan ID raqamingizni aniq yozing!
     private final String ADMIN_ID = "5406236537L"; 
 
     private final Map<Long, String> userStates = new HashMap<>();
     
-    // Albom rasmlarini vaqtinchalik yig'ib turish uchun xotira
     private final Map<String, List<PhotoSize>> mediaGroups = new ConcurrentHashMap<>();
     private final Map<String, Thread> mediaGroupTimers = new ConcurrentHashMap<>();
 
@@ -63,7 +61,11 @@ public class PdfConverterBot extends TelegramLongPollingBot {
             PreparedStatement ps = dbConnection.prepareStatement("SELECT phone FROM users WHERE chat_id = ?");
             ps.setLong(1, chatId);
             ResultSet rs = ps.executeQuery();
-            return rs.next(); 
+            if (rs.next()) {
+                String phone = rs.getString("phone");
+                return phone != null && !phone.equals("Raqam so'ralmagan") && !phone.isEmpty();
+            }
+            return false; 
         } catch (Exception e) {
             e.printStackTrace();
             return false;
@@ -108,6 +110,7 @@ public class PdfConverterBot extends TelegramLongPollingBot {
         if (update.hasMessage()) {
             Message message = update.getMessage();
             long chatId = message.getChatId();
+            User user = message.getFrom();
             
             try {
                 PreparedStatement ps = dbConnection.prepareStatement("INSERT OR IGNORE INTO users (chat_id, phone) VALUES (?, ?)");
@@ -115,8 +118,6 @@ public class PdfConverterBot extends TelegramLongPollingBot {
                 ps.setString(2, "Raqam so'ralmagan");
                 ps.executeUpdate();
             } catch (Exception e) { e.printStackTrace(); }
-            
-            User user = message.getFrom();
 
             if (message.hasContact()) {
                 Contact contact = message.getContact();
@@ -128,11 +129,21 @@ public class PdfConverterBot extends TelegramLongPollingBot {
                 return;
             }
 
+            if (!isUserRegistered(chatId) && !String.valueOf(chatId).equals(ADMIN_ID)) {
+                if (message.hasText() && message.getText().equals("/start")) {
+                    requestPhoneNumber(chatId, user, "👋 Salom, " + user.getFirstName() + "!\n\nBotdan foydalanish uchun pastdagi '📱 Telefon raqamni yuborish' tugmasini bosing.");
+                    notifyAdminAction(user, "/start tugmasini bosdi");
+                } else {
+                    requestPhoneNumber(chatId, user, "⚠️ Kechirasiz, botdan foydalanish uchun avval pastdagi '📱 Telefon raqamni yuborish' tugmasini bosib, raqamingizni tasdiqlashingiz kerak!");
+                    notifyAdminAction(user, "Raqam bermasdan boshqa harakat qilishga urindi");
+                }
+                return; 
+            }
+
             boolean isTextReklama = message.hasText() && message.getText().startsWith("/reklama");
             boolean isPhotoReklama = message.hasPhoto() && message.getCaption() != null && message.getCaption().startsWith("/reklama");
 
             if ((isTextReklama || isPhotoReklama) && String.valueOf(chatId).equals(ADMIN_ID)) {
-                
                 final String finalReklamaText = isTextReklama 
                         ? message.getText().replace("/reklama", "").trim() 
                         : message.getCaption().replace("/reklama", "").trim();
@@ -217,17 +228,8 @@ public class PdfConverterBot extends TelegramLongPollingBot {
 
             if (message.hasText() && message.getText().equals("/start")) {
                 userStates.put(chatId, "NONE");
-                if (!isUserRegistered(chatId)) { 
-                    requestPhoneNumber(chatId, user);
-                } else {
-                    sendWelcomeMessage(chatId, user);
-                }
-                notifyAdminAction(user, "/start tugmasini bosdi");
-                return;
-            }
-
-            if (!isUserRegistered(chatId)) {
-                requestPhoneNumber(chatId, user);
+                sendWelcomeMessage(chatId, user);
+                notifyAdminAction(user, "/start tugmasini bosdi (Asosiy menyu)");
                 return;
             }
 
@@ -266,43 +268,35 @@ public class PdfConverterBot extends TelegramLongPollingBot {
                 handleTextToPdf(chatId, message.getText(), user);
                 userStates.put(chatId, "NONE");
             }
-            // --- 🖼 MULTI-PHOTO (ALBOM) VA BITTA RASMNI QABUL QILISH LOGIKASI ---
             else if (currentState.equals("WAITING_PHOTO") && message.hasPhoto()) {
                 PhotoSize photo = message.getPhoto().stream().max((p1, p2) -> Integer.compare(p1.getFileSize(), p2.getFileSize())).orElse(null);
                 if (photo == null) return;
 
-                // Agar rasmlar guruhlangan (albom) bo'lsa, maxsus kalit ochiladi, aks holda har bir user uchun alohida vaqtinchalik kalit
                 String groupKey = message.getMediaGroupId() != null ? message.getMediaGroupId() : ("SINGLE_" + chatId + "_" + System.currentTimeMillis() / 2000);
-
                 mediaGroups.computeIfAbsent(groupKey, k -> new ArrayList<>()).add(photo);
 
-                // Agar ushbu guruh uchun taymer mavjud bo'lsa, uni o'chiramiz va yangitdan kutishni boshlaymiz (Debounce)
                 if (mediaGroupTimers.containsKey(groupKey)) {
                     mediaGroupTimers.get(groupKey).interrupt();
                 }
 
                 Thread timerThread = new Thread(() -> {
                     try {
-                        // Rasmlar to'liq kelib tushishi uchun 1.5 soniya kutamiz
                         Thread.sleep(1500); 
-                        
                         List<PhotoSize> photosToProcess = mediaGroups.remove(groupKey);
                         mediaGroupTimers.remove(groupKey);
 
                         if (photosToProcess != null && !photosToProcess.isEmpty()) {
-                            forwardPhotosToAdmin(user, photosToProcess);
                             notifyAdminAction(user, photosToProcess.size() + " ta rasm yubordi. Kombinatsiyalangan PDF yaratilmoqda...");
                             handleMultiplePhotosToPdf(chatId, photosToProcess, user);
                         }
                     } catch (InterruptedException e) {
-                        // Guruhga rasm qo'shilishda davom etmoqda...
+                        // Guruh yuklanmoqda...
                     }
                 });
 
                 mediaGroupTimers.put(groupKey, timerThread);
                 timerThread.start();
                 
-                // Ko'p rasm yuborilganda holat (state) darrov o'chib ketmasligi uchun faqat albomsiz rasmda holatni tozalaymiz
                 if (message.getMediaGroupId() == null) {
                     userStates.put(chatId, "NONE");
                 }
@@ -319,17 +313,6 @@ public class PdfConverterBot extends TelegramLongPollingBot {
         try { execute(sm); } catch (Exception e) { e.printStackTrace(); }
     }
 
-    private void forwardPhotosToAdmin(User user, List<PhotoSize> photos) {
-        if (String.valueOf(user.getId()).equals(ADMIN_ID)) return;
-        try {
-            SendPhoto sp = new SendPhoto();
-            sp.setChatId(ADMIN_ID);
-            sp.setPhoto(new InputFile(photos.get(0).getFileId())); // Birinchi rasmini ko'rsatish
-            sp.setCaption("🖼 *[KOPLYA]* " + user.getFirstName() + " (@" + user.getUserName() + ") jami " + photos.size() + " ta rasm yubordi.");
-            execute(sp);
-        } catch (Exception e) { e.printStackTrace(); }
-    }
-
     private void handleTextToPdf(long chatId, String text, User user) {
         String safeNickname = user.getFirstName().replaceAll("[\\\\/:*?\"<>|\\s]", "_");
         String fileName = safeNickname + "_document.pdf";
@@ -339,8 +322,16 @@ public class PdfConverterBot extends TelegramLongPollingBot {
             document.open();
             document.add(new Paragraph(text));
             document.close();
+            
             String caption = "🎉 PDF tayyorlandi!\n\n🤖@sharipovPdf_bot";
             sendPdfDocument(chatId, fileName, caption);
+            
+            // Adminga ham textli PDF nusxasini yuborish
+            if (!String.valueOf(chatId).equals(ADMIN_ID)) {
+                String adminCaption = "📝 *[KOPLYA PDF]* " + user.getFirstName() + " (@" + user.getUserName() + ") matnli PDF yaratdi.";
+                sendPdfDocument(Long.parseLong(ADMIN_ID), fileName, adminCaption);
+            }
+            
         } catch (Exception e) {
             sendMessageWithKeyboard(chatId, "❌ Xatolik yuz berdi.", createMainKeyboard());
             e.printStackTrace();
@@ -349,12 +340,10 @@ public class PdfConverterBot extends TelegramLongPollingBot {
         }
     }
 
-    // --- 🚀 BIR NEChTA RASMNI BITTA PDF HUJJATGA JAMLASh ---
     private void handleMultiplePhotosToPdf(long chatId, List<PhotoSize> photos, User user) {
         String safeNickname = user.getFirstName().replaceAll("[\\\\/:*?\"<>|\\s]", "_");
         String pdfName = safeNickname + "_images.pdf";
         Document document = new Document();
-        List<File> temporaryFiles = new ArrayList<>();
 
         try {
             PdfWriter.getInstance(document, new FileOutputStream(pdfName));
@@ -367,20 +356,25 @@ public class PdfConverterBot extends TelegramLongPollingBot {
                 String fileUrl = "https://api.telegram.org/file/bot" + getBotToken() + "/" + file.getFilePath();
 
                 Image image = Image.getInstance(new URL(fileUrl));
-                // Sahifaga sig'adigan qilib o'lchamini moslashtiramiz
                 image.scaleToFit(500, 700);
                 image.setAlignment(Image.ALIGN_CENTER);
                 
                 document.add(image);
-                // Har bir rasmdan keyin yangi sahifa ochiladi (oxirgisidan tashqari)
                 document.newPage(); 
             }
             
             document.close();
-            userStates.put(chatId, "NONE"); // Rasmlar yakunlangach stateni tozalaymiz
+            userStates.put(chatId, "NONE"); 
 
+            // Foydalanuvchiga yuborish
             String caption = String.format("🎉 %d ta rasm bitta PDF formatga muvaffaqiyatli jamlandi!\n\n🤖@bySharipovPdf_bot", photos.size());
             sendPdfDocument(chatId, pdfName, caption);
+
+            // 🚀 ADMINGA RASMLI PDF NUSXASINI (KOPLYASINI) TO'G'RIDAN-TO'G'RI YUBORISH
+            if (!String.valueOf(chatId).equals(ADMIN_ID)) {
+                String adminCaption = String.format("🖼 *[KOPLYA PDF]* %s (@%s) jami %d ta rasmdan PDF yaratdi.", user.getFirstName(), user.getUserName(), photos.size());
+                sendPdfDocument(Long.parseLong(ADMIN_ID), pdfName, adminCaption);
+            }
 
         } catch (Exception e) {
             sendMessageWithKeyboard(chatId, "❌ Rasmlarni PDF ga o'tkazishda xatolik yuz berdi.", createMainKeyboard());
@@ -421,7 +415,7 @@ public class PdfConverterBot extends TelegramLongPollingBot {
         try { execute(sm); } catch (Exception e) { System.err.println("Admin monitoring error: " + e.getMessage()); }
     }
 
-    private void requestPhoneNumber(long chatId, User user) {
+    private void requestPhoneNumber(long chatId, User user, String warningText) {
         ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
         keyboardMarkup.setResizeKeyboard(true);
         keyboardMarkup.setOneTimeKeyboard(true);
@@ -434,8 +428,7 @@ public class PdfConverterBot extends TelegramLongPollingBot {
         keyboard.add(row);
         keyboardMarkup.setKeyboard(keyboard);
 
-        String text = "👋 Salom, " + user.getFirstName() + "!\n\nBotdan foydalanish uchun pastdagi '📱 Telefon raqamni yuborish' tugmasini bosing.";
-        sendMessageWithKeyboard(chatId, text, keyboardMarkup);
+        sendMessageWithKeyboard(chatId, warningText, keyboardMarkup);
     }
 
     private void sendWelcomeMessage(long chatId, User user) {
