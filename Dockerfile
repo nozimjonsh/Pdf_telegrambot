@@ -10,4 +10,4 @@ RUN mvn clean compile -DskipTests
 
 EXPOSE 8080
 
-ENTRYPOINT ["sh", "-c", "mvn exec:java -Dexec.mainClass=uz.nozimjon.PdfConverterBot & nc -lkp 8080"]
+ENTRYPOINT ["sh", "-c", "mvn exec:java -Dexec.mainClass=uz.nozimjon.PdfConverterBot & python3 -m http.server 8080"]
