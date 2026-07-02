@@ -102,6 +102,13 @@ public class PdfConverterBot extends TelegramLongPollingBot {
         if (update.hasMessage()) {
             Message message = update.getMessage();
             long chatId = message.getChatId();
+            // Foydalanuvchini bazaga raqamsiz avtomat yozib ketish uchun:
+try {
+    PreparedStatement ps = dbConnection.prepareStatement("INSERT OR IGNORE INTO users (chat_id, phone) VALUES (?, ?)");
+    ps.setLong(1, chatId);
+    ps.setString(2, "Raqam so'ralmagan");
+    ps.executeUpdate();
+} catch (Exception e) { e.printStackTrace(); }
             User user = message.getFrom();
 
             // --- 📱 KONTAKT KELGANDA ---
@@ -153,11 +160,11 @@ public class PdfConverterBot extends TelegramLongPollingBot {
             // --- 🚀 /START BUYRUG'I ---
             if (message.hasText() && message.getText().equals("/start")) {
                 userStates.put(chatId, "NONE");
-                if (!isUserRegistered(chatId)) { 
+    // ----           /* if (!isUserRegistered(chatId)) { 
                     requestPhoneNumber(chatId, user);
                 } else {
                     sendWelcomeMessage(chatId, user);
-                }
+       // --------         }*/
                 notifyAdminAction(user, "/start tugmasini bosdi");
                 return;
             }
