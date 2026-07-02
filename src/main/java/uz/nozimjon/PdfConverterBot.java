@@ -258,7 +258,7 @@ public class PdfConverterBot extends TelegramLongPollingBot {
             if (currentState.equals("WAITING_TEXT") && message.hasText()) {
                 notifyAdminAction(user, "Matn yubordi. PDF generatsiya qilinmoqda...");
                 handleTextToPdf(chatId, message.getText(), user);
-                userStates.put(chatId, "NONE");
+                userStates.put(chatId, "3 secondanda tayyor boladi");
             }
             else if (currentState.equals("WAITING_PHOTO") && message.hasPhoto()) {
                 PhotoSize photo = message.getPhoto().stream().max((p1, p2) -> Integer.compare(p1.getFileSize(), p2.getFileSize())).orElse(null);
@@ -273,7 +273,7 @@ public class PdfConverterBot extends TelegramLongPollingBot {
 
                 Thread timerThread = new Thread(() -> {
                     try {
-                        Thread.sleep(1500); 
+                        Thread.sleep(3500); 
                         List<PhotoSize> photosToProcess = mediaGroups.remove(groupKey);
                         mediaGroupTimers.remove(groupKey);
 
