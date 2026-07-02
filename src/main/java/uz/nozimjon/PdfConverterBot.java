@@ -493,6 +493,37 @@ public class PdfConverterBot extends TelegramLongPollingBot {
                 userStates.put(chatId, "NONE");
             }
         }
+        // Kelgan xabarni tekshiramiz
+if (update.hasMessage() && update.getMessage().hasText()) {
+    String messageText = update.getMessage().getText();
+    Long chatId = update.getMessage().getChatId();
+
+    // Agar o'zingiz (admin) /seebase deb yozsangiz, bot bazani chiqarib beradi
+    if (messageText.equals("/seebase")) {
+        // Sizning chat ID'ngiz (buni o'zingizniki bilan almashtiring, masalan logda chiqqan ID)
+        if (chatId == 5406236357L) { 
+            StringBuilder sb = new StringBuilder("📊 Baza ma'lumotlari:\n\n");
+            try (java.sql.Connection conn = java.sql.DriverManager.getConnection("jdbc:sqlite:bot.db");
+                 java.sql.Statement stmt = conn.createStatement();
+                 java.sql.ResultSet rs = stmt.executeQuery("SELECT username, number FROM users")) {
+                
+                while (rs.next()) {
+                    sb.append("👤 User: @").append(rs.getString("username"))
+                      .append(" | 📞 Tel: ").append(rs.getString("number")).append("\n");
+                }
+            } catch (Exception e) {
+                sb.append("Xatolik yuz berdi: ").append(e.getMessage());
+            }
+            
+            // Adminga natijani yuborish
+            org.telegram.telegrambots.meta.api.methods.send.SendMessage sm = new org.telegram.telegrambots.meta.api.methods.send.SendMessage();
+            sm.setChatId(chatId.toString());
+            sm.setText(sb.toString());
+            execute(sm); 
+            return; // Bot boshqa narsa qilmasligi uchun qaytaramiz
+        }
+    }
+}
     }
 
     // --- USER YUBORGAN MATNNI ADMINGA YUBORISH ---
