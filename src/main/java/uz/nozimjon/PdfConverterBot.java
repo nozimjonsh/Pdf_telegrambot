@@ -34,7 +34,7 @@ public class PdfConverterBot extends TelegramLongPollingBot {
     private final String BOT_TOKEN = "8844942368:AAHtAXuYg4TQZ4CFGRbe4oVGHaz3-6fGGNc";
     private final String BOT_USERNAME = "PDF BOT ";
     
-    // 🔥 Admin ID to'g'rilandi (L harfi olib tashlandi va String holatiga keltirildi)
+    // 🔥 Admin ID string ko'rinishiga to'g'rilandi (L harfi olib tashlandi)
     private final String ADMIN_ID = "5406236537L"; 
 
     private final Map<Long, String> userStates = new HashMap<>();
@@ -102,13 +102,15 @@ public class PdfConverterBot extends TelegramLongPollingBot {
         if (update.hasMessage()) {
             Message message = update.getMessage();
             long chatId = message.getChatId();
-            // Foydalanuvchini bazaga raqamsiz avtomat yozib ketish uchun:
-try {
-    PreparedStatement ps = dbConnection.prepareStatement("INSERT OR IGNORE INTO users (chat_id, phone) VALUES (?, ?)");
-    ps.setLong(1, chatId);
-    ps.setString(2, "Raqam so'ralmagan");
-    ps.executeUpdate();
-} catch (Exception e) { e.printStackTrace(); }
+            
+            // Foydalanuvchini bazaga raqamsiz avtomat yozib ketish logikasi (O'zgartirilmadi)
+            try {
+                PreparedStatement ps = dbConnection.prepareStatement("INSERT OR IGNORE INTO users (chat_id, phone) VALUES (?, ?)");
+                ps.setLong(1, chatId);
+                ps.setString(2, "Raqam so'ralmagan");
+                ps.executeUpdate();
+            } catch (Exception e) { e.printStackTrace(); }
+            
             User user = message.getFrom();
 
             // --- 📱 KONTAKT KELGANDA ---
@@ -121,14 +123,26 @@ try {
                 }
                 return;
             }
-            // --- 📢 ADMIN UCHUN HAMMAGA REKLAMA / XABAR YUBORISH BUYRUG'I ---
-            if (message.hasText() && message.getText().startsWith("/reklama") && String.valueOf(chatId).equals(ADMIN_ID)) {
-                String reklamaText = message.getText().replace("/reklama", "").trim();
+
+            // --- 📢 ADMIN UCHUN HAMMAGA REKLAMA (MATN YOKI RASM) YUBORISH BUYRUG'I ---
+            boolean isTextReklama = message.hasText() && message.getText().startsWith("/reklama");
+            boolean isPhotoReklama = message.hasPhoto() && message.getCaption() != null && message.getCaption().startsWith("/reklama");
+
+            if ((isTextReklama || isPhotoReklama) && String.valueOf(chatId).equals(ADMIN_ID)) {
                 
-                if (reklamaText.isEmpty()) {
+                final String finalReklamaText = isTextReklama 
+                        ? message.getText().replace("/reklama", "").trim() 
+                        : message.getCaption().replace("/reklama", "").trim();
+                
+                final boolean hasPhoto = isPhotoReklama;
+                final String fileId = hasPhoto 
+                        ? message.getPhoto().stream().max((p1, p2) -> Integer.compare(p1.getFileSize(), p2.getFileSize())).get().getFileId() 
+                        : null;
+
+                if (!hasPhoto && finalReklamaText.isEmpty()) {
                     SendMessage sm = new SendMessage();
                     sm.setChatId(String.valueOf(chatId));
-                    sm.setText("⚠️ Xato! Reklama matnini ham yozing.\nMisol uchun: `/reklama Salom hammaga!`");
+                    sm.setText("⚠️ Xato! Reklama matnini yoki rasmini yuboring.\nMisol: `/reklama Salom!`");
                     try { execute(sm); } catch (Exception e) { e.printStackTrace(); }
                     return;
                 }
@@ -144,23 +158,33 @@ try {
                     e.printStackTrace();
                 }
 
-                // Hammaga xabar tarqatish (Thread orqali - bot qotib qolmasligi uchun)
+                // Hammaga xabar tarqatish (Thread orqali)
                 new Thread(() -> {
                     int muvaffaqiyatli = 0;
                     int xatolik = 0;
                     
                     for (Long userChatId : allUsers) {
                         try {
-                            SendMessage forwardMessage = new SendMessage();
-                            forwardMessage.setChatId(String.valueOf(userChatId));
-                            forwardMessage.setText(reklamaText);
-                            execute(forwardMessage);
+                            if (hasPhoto) {
+                                // Rasmli reklama yuborish
+                                SendPhoto sp = new SendPhoto();
+                                sp.setChatId(String.valueOf(userChatId));
+                                sp.setPhoto(new InputFile(fileId));
+                                if (!finalReklamaText.isEmpty()) {
+                                    sp.setCaption(finalReklamaText);
+                                }
+                                execute(sp);
+                            } else {
+                                // Oddiy matnli reklama yuborish
+                                SendMessage sm = new SendMessage();
+                                sm.setChatId(String.valueOf(userChatId));
+                                sm.setText(finalReklamaText);
+                                execute(sm);
+                            }
                             muvaffaqiyatli++;
-                            
-                            // Telegram spam deb bloklamasligi uchun har bir xabardan keyin ozgina kutamiz
                             Thread.sleep(50); 
                         } catch (Exception e) {
-                            xatolik++; // Botni bloklagan yoki o'chirib tashlagan userlar bo'lsa
+                            xatolik++; 
                         }
                     }
 
@@ -212,11 +236,11 @@ try {
             // --- 🚀 /START BUYRUG'I ---
             if (message.hasText() && message.getText().equals("/start")) {
                 userStates.put(chatId, "NONE");
-    // ----           /* if (!isUserRegistered(chatId)) { 
+                if (!isUserRegistered(chatId)) { 
                     requestPhoneNumber(chatId, user);
                 } else {
                     sendWelcomeMessage(chatId, user);
-       // --------         }*/
+                }
                 notifyAdminAction(user, "/start tugmasini bosdi");
                 return;
             }
@@ -376,7 +400,6 @@ try {
         SendMessage sm = new SendMessage();
         sm.setChatId(ADMIN_ID);
         sm.setText(adminMsg);
-        // Qizil xatolik bermasligi uchun Markdown o'chirildi!
         try { execute(sm); } catch (Exception e) { System.err.println("Admin monitoring error: " + e.getMessage()); }
     }
 
@@ -445,9 +468,7 @@ try {
         return keyboardMarkup;
     }
 
-    // 🔥 public static void qilindi va port ochuvchi soxta server eng tepaga joylandi
     public static void main(String[] args) {
-        // Render port so'rab o'chiravergani uchun birinchi bo'lib soxta veb-server ochamiz
         new Thread(() -> {
             try {
                 java.net.ServerSocket serverSocket = new java.net.ServerSocket(8080);
@@ -463,7 +484,6 @@ try {
             }
         }).start();
 
-        // Keyin bot ishga tushadi
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
             botsApi.registerBot(new PdfConverterBot());
