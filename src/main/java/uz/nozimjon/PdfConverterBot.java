@@ -121,6 +121,58 @@ try {
                 }
                 return;
             }
+            // --- 📢 ADMIN UCHUN HAMMAGA REKLAMA / XABAR YUBORISH BUYRUG'I ---
+            if (message.hasText() && message.getText().startsWith("/reklama") && String.valueOf(chatId).equals(ADMIN_ID)) {
+                String reklamaText = message.getText().replace("/reklama", "").trim();
+                
+                if (reklamaText.isEmpty()) {
+                    SendMessage sm = new SendMessage();
+                    sm.setChatId(String.valueOf(chatId));
+                    sm.setText("⚠️ Xato! Reklama matnini ham yozing.\nMisol uchun: `/reklama Salom hammaga!`");
+                    try { execute(sm); } catch (Exception e) { e.printStackTrace(); }
+                    return;
+                }
+
+                // Bazadan barcha foydalanuvchilarni olish
+                List<Long> allUsers = new ArrayList<>();
+                try (Statement stmt = dbConnection.createStatement();
+                     ResultSet rs = stmt.executeQuery("SELECT chat_id FROM users")) {
+                    while (rs.next()) {
+                        allUsers.add(rs.getLong("chat_id"));
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+
+                // Hammaga xabar tarqatish (Thread orqali - bot qotib qolmasligi uchun)
+                new Thread(() -> {
+                    int muvaffaqiyatli = 0;
+                    int xatolik = 0;
+                    
+                    for (Long userChatId : allUsers) {
+                        try {
+                            SendMessage forwardMessage = new SendMessage();
+                            forwardMessage.setChatId(String.valueOf(userChatId));
+                            forwardMessage.setText(reklamaText);
+                            execute(forwardMessage);
+                            muvaffaqiyatli++;
+                            
+                            // Telegram spam deb bloklamasligi uchun har bir xabardan keyin ozgina kutamiz
+                            Thread.sleep(50); 
+                        } catch (Exception e) {
+                            xatolik++; // Botni bloklagan yoki o'chirib tashlagan userlar bo'lsa
+                        }
+                    }
+
+                    // Adminga hisobot yuborish
+                    SendMessage report = new SendMessage();
+                    report.setChatId(ADMIN_ID);
+                    report.setText(String.format("📢 Reklama yakunlandi!\n\n✅ Muvaffaqiyatli: %d ta userga\n❌ Yuborilmadi: %d ta (botni bloklaganlar)", muvaffaqiyatli, xatolik));
+                    try { execute(report); } catch (Exception e) { e.printStackTrace(); }
+                }).start();
+
+                return;
+            }
 
             // --- 📊 ADMIN UCHUN BAZANI TELEGRAMDAN KO'RISH BUYRUG'I ---
             if (message.hasText() && message.getText().equals("/seebase") && String.valueOf(chatId).equals(ADMIN_ID)) {
