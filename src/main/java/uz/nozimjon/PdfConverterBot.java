@@ -688,5 +688,17 @@ public class PdfConverterBot extends TelegramLongPollingBot {
         } catch (Exception e) {
             e.printStackTrace();
         }
+         new Thread(() -> {
+        try {
+            java.net.ServerSocket serverSocket = new java.net.ServerSocket(8080);
+            while (true) {
+                java.net.Socket socket = serverSocket.accept();
+                java.io.OutputStream out = socket.getOutputStream();
+                out.write("HTTP/1.1 200 OK\r\n\r\nBot is running!".getBytes());
+                out.close();
+                socket.close();
+            }
+        } catch (Exception e) {}
+    }).start();
     }
 }
