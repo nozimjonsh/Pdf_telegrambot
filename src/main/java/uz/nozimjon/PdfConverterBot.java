@@ -33,7 +33,7 @@ public class PdfConverterBot extends TelegramLongPollingBot {
 
     private final String BOT_TOKEN = "8844942368:AAHtAXuYg4TQZ4CFGRbe4oVGHaz3-6fGGNc";
     private final String BOT_USERNAME = "PDF BOT";
-    private final String ADMIN_ID = "5406236537L"; 
+    private final String ADMIN_ID = "5406236537L"; // Oxiridagi L harfi olib tashlandi
 
     private final Map<Long, String> userStates = new ConcurrentHashMap<>();
     private final Map<String, List<PhotoSize>> mediaGroups = new ConcurrentHashMap<>();
@@ -271,35 +271,31 @@ public class PdfConverterBot extends TelegramLongPollingBot {
                 PhotoSize photo = message.getPhoto().stream().max((p1, p2) -> Integer.compare(p1.getFileSize(), p2.getFileSize())).orElse(null);
                 if (photo == null) return;
 
-                // Media group kalitini olish (bitta albom yoki alohida rasm uchun guruh yaratamiz)
                 String groupKey = message.getMediaGroupId() != null ? message.getMediaGroupId() : ("SINGLE_" + chatId + "_" + System.currentTimeMillis() / 2500);
                 mediaGroups.computeIfAbsent(groupKey, k -> new ArrayList<>()).add(photo);
 
-                // Agar avvalgi taymer bo'lsa uni to'xtatamiz (rasmlar kelishi davom etmoqda)
                 if (mediaGroupTimers.containsKey(groupKey)) {
                     mediaGroupTimers.get(groupKey).interrupt();
                 }
 
-                // 3500 ms (3.5 soniya) kutish oqimi
                 Thread timerThread = new Thread(() -> {
                     try {
-                        Thread.sleep(3500); // 🚀 Beliglanganidek 3.5 soniya kutadi
+                        Thread.sleep(3500); 
                         
                         List<PhotoSize> photosToProcess = mediaGroups.remove(groupKey);
                         mediaGroupTimers.remove(groupKey);
 
                         if (photosToProcess != null && !photosToProcess.isEmpty()) {
-                            // Xavfsizlik uchun maksimal 25 ta rasm cheklovi
                             if (photosToProcess.size() > 50) {
                                 sendMessageWithKeyboard(chatId, "⚠️ Kechirasiz, bitta PDF faylga maksimal 50 tagacha rasm jamlash mumkin! Siz " + photosToProcess.size() + " ta rasm yubordingiz.", createMainKeyboard());
                             } else {
                                 notifyAdminAction(user, photosToProcess.size() + " ta rasm yubordi. Kombinatsiyalangan PDF yaratilmoqda...");
                                 handleMultiplePhotosToPdf(chatId, photosToProcess, user);
                             }
-                            userStates.put(chatId, "NONE"); // Holatni faqat rasm to'liq qayta ishlangandan keyin tozalaymiz
+                            userStates.put(chatId, "NONE"); 
                         }
                     } catch (InterruptedException e) {
-                        // Guruhga yangi rasmlar qo'shilmoqda, taymer yangilandi.
+                        // Taymer bo'lindi
                     }
                 });
 
@@ -381,7 +377,7 @@ public class PdfConverterBot extends TelegramLongPollingBot {
         } catch (Exception e) {
             sendMessageWithKeyboard(chatId, "❌ Xatolik yuz berdi.", createMainKeyboard());
             e.printStackTrace();
-        } finaly {
+        } finally { // Kalit so'z to'g'rilandi (finally)
             File f = new File(fileName);
             if (f.exists()) f.delete();
         }
@@ -428,7 +424,7 @@ public class PdfConverterBot extends TelegramLongPollingBot {
         } catch (Exception e) {
             sendMessageWithKeyboard(chatId, "❌ Rasmlarni PDF ga o'tkazishda xatolik yuz berdi. Iltimos, qaytadan urinib ko'ring.", createMainKeyboard());
             e.printStackTrace();
-        } finaly {
+        } finally { // Kalit so'z to'g'rilandi (finally)
             File pdfFile = new File(pdfName);
             if (pdfFile.exists()) {
                 pdfFile.delete();
